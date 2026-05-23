@@ -184,8 +184,7 @@
             }
         });
 
-        // SE ELIMINÓ LA REGLA QUE MOVÍA "COMISIONES DE VENTA".
-        // AHORA QUEDARÁ EN SU LUGAR ORIGINAL DEL EXCEL.
+        // REGLAS ESPECIALES SE ELIMINARON COMO FUE SOLICITADO. ORDEN ORIGINAL SE RESPETA.
 
         const idxEq = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('PUNTO DE EQUILIBRIO'));
         const idxUtil = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('UTILIDAD DESPUES') || c.toUpperCase().includes('UTILIDAD DESPUÉS'));
@@ -307,9 +306,10 @@
             valorBase = agrupado[nombreCategoriaBase];
         }
 
-        // SE AGREGÓ "COMISIONES DE VENTA" A LAS CATEGORÍAS PRINCIPALES
+        // SE AGREGÓ "MARGEN BRUTO" A LAS CATEGORÍAS PRINCIPALES
         const categoriasPrincipales = [
             'ingresos por venta', 'ingresos por ventas', 'costo de venta', 'costos de venta', 
+            'margen bruto', // <--- MARGEN BRUTO COMO CATEGORÍA PRINCIPAL
             'sueldos operacionales', 'materiales e insumo', 'materiales e insumos', 'servicios externos', 'gastos generales', 
             'gto generales', 'mkt y publicidad', 'comisiones de venta', 'comisiones de ventas',
             'gastos fijos', 'gastos de rr. hh.', 'gastos de rr.hh.', 'costos financieros', 
@@ -323,7 +323,8 @@
         ordenCategoriasUnicas.forEach(cat => {
             const cLower = cat.toLowerCase();
             const esPrincipal = categoriasPrincipales.some(p => cLower.includes(p));
-            const esTotal = cLower.includes('equilibrio') || cLower.includes('utilidad antes de impuesto') || cLower.includes('utilidad despues') || cLower.includes('utilidad después');
+            // Los márgenes o totales de utilidad se siguen tratando como totales mayores
+            const esTotal = cLower.includes('equilibrio') || cLower.includes('utilidad antes de impuesto') || cLower.includes('utilidad despues') || cLower.includes('utilidad después') || (cLower.includes('margen') && !cLower.includes('margen bruto'));
 
             if (esPrincipal || esTotal) {
                 currentGrupo = { principal: cat, isTotal: esTotal, children: [] };
