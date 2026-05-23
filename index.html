@@ -113,7 +113,6 @@
     const URL_BASE_DATOS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT6A2yPziLhHV1MTLYKTDYMFCqnor0GHX_2fsMHu_Y36C7I8cyt_oPtDIdDJpXhoA/pub?gid=1171120709&single=true&output=csv&_t=" + new Date().getTime();
 
     window.onload = function() {
-        // Usamos PapaParse directamente para descargar para evitar problemas de formato y saltos de línea (\\r\\n)
         Papa.parse(URL_BASE_DATOS, {
             download: true,
             skipEmptyLines: true,
@@ -149,7 +148,6 @@
     function procesarDatos(allRows) {
         let headerIndex = -1;
         
-        // Buscar la fila de encabezados de forma robusta
         for(let i = 0; i < allRows.length; i++) {
             const row = allRows[i].map(col => typeof col === 'string' ? col.trim() : col);
             if(row.includes('SUCURSAL') && row.includes('CATEGORIA')) {
@@ -167,7 +165,6 @@
         const fields = allRows[headerIndex].map(f => typeof f === 'string' ? f.trim() : f);
         const dataRows = allRows.slice(headerIndex + 1);
         
-        // Convertir la matriz cruda en objetos fáciles de leer
         const dataObjects = dataRows.map(row => {
             let obj = {};
             fields.forEach((field, index) => {
@@ -186,6 +183,19 @@
                 ordenCategoriasUnicas.push(cat);
             }
         });
+
+        // REGLA ESPECIAL: Mover COMISIONES DE VENTA para que quede debajo de SERVICIOS EXTERNOS
+        const idxComisiones = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('COMISIONES DE VENTA'));
+        if (idxComisiones !== -1) {
+            const [catComisiones] = ordenCategoriasUnicas.splice(idxComisiones, 1);
+            // Volver a buscar el índice de Servicios Externos porque pudo haber cambiado tras el splice
+            const idxServicios = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('SERVICIOS EXTERNOS'));
+            if (idxServicios !== -1) {
+                ordenCategoriasUnicas.splice(idxServicios + 1, 0, catComisiones);
+            } else {
+                ordenCategoriasUnicas.push(catComisiones);
+            }
+        }
 
         const idxEq = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('PUNTO DE EQUILIBRIO'));
         const idxUtil = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('UTILIDAD DESPUES') || c.toUpperCase().includes('UTILIDAD DESPUÉS'));
@@ -224,7 +234,6 @@
             periodoSelect.appendChild(opt);
         });
         
-        // Obtener mes anterior dinámicamente
         const meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
         let fechaActual = new Date();
         fechaActual.setMonth(fechaActual.getMonth() - 1);
@@ -285,7 +294,6 @@
             const cat = String(row.CATEGORIA).trim();
             if (!ordenCategoriasUnicas.includes(cat)) return;
             
-            // Reemplazar comas si vienen números mal formateados
             let rawValue = row[periodo];
             if(typeof rawValue === 'string') rawValue = rawValue.replace(',', '.');
             
@@ -313,13 +321,11 @@
 
         ordenCategoriasUnicas.forEach((cat, index) => {
             const val = agrupado[cat] || 0;
-            // Ocultar categorías con valor 0
             if (val === 0) return;
 
             const tr = document.createElement('tr');
             const cLower = cat.toLowerCase();
             
-            // AGREGAMOS 'SUELDOS OPERACIONALES' A LAS CATEGORÍAS PRINCIPALES
             const categoriasPrincipales = [
                 'ingresos por venta', 'costo de venta', 'costos de venta', 
                 'sueldos operacionales', 'materiales e insumo', 'servicios externos', 'gastos generales', 
