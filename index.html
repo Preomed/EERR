@@ -184,12 +184,14 @@
             }
         });
 
-        // SOLUCIÓN AL CORTE: Buscar la última fila vital desde abajo hacia arriba
+        // Asegurarnos de no cortar filas importantes, ampliamos la búsqueda de la última fila vital
         let maxIdx = -1;
         for (let i = ordenCategoriasUnicas.length - 1; i >= 0; i--) {
             let cUpper = ordenCategoriasUnicas[i].toUpperCase();
             if (cUpper.includes('PUNTO DE EQUILIBRIO') || 
                 cUpper.includes('UTILIDAD') || 
+                cUpper.includes('PERDIDA') || 
+                cUpper.includes('PÉRDIDA') || 
                 cUpper.includes('IMPUESTO')) {
                 maxIdx = i;
                 break;
@@ -200,7 +202,7 @@
             ordenCategoriasUnicas = ordenCategoriasUnicas.slice(0, maxIdx + 1);
         }
         
-        // Se limpia "RESULTADO" si está asilado al final
+        // Se limpia "RESULTADO" si está asilado al final y no pertenece a un cálculo
         ordenCategoriasUnicas = ordenCategoriasUnicas.filter(c => c.toUpperCase().trim() !== 'RESULTADO');
 
         inicializarFiltros();
@@ -258,6 +260,43 @@
         }).format(valor);
     }
 
+    // Lógica robusta para parsear números con cualquier formato (puntos, comas, signos negativos o paréntesis contables)
+    function cleanNumber(rawValue) {
+        if (typeof rawValue === 'number') return rawValue;
+        if (!rawValue) return 0;
+        
+        let s = String(rawValue).trim();
+        let isNeg = false;
+        
+        // Formato contable (1432780) o -1432780
+        if (s.startsWith('(') && s.endsWith(')')) {
+            isNeg = true;
+            s = s.slice(1, -1).trim();
+        } else if (s.startsWith('-')) {
+            isNeg = true;
+            s = s.slice(1).trim();
+        }
+        
+        // Quitar signos de peso, espacios y letras
+        s = s.replace(/[^0-9.,]/g, '');
+        if (s === '') return 0;
+
+        // Limpiar puntos de miles y reemplazar coma decimal
+        if (s.includes('.') && s.includes(',')) {
+            s = s.replace(/\\./g, '').replace(',', '.');
+        } else if (s.includes(',')) {
+            s = s.replace(',', '.');
+        } else if (s.split('.').length > 2) {
+            s = s.replace(/\\./g, '');
+        } else if (s.includes('.') && s.split('.')[1].length === 3) {
+            s = s.replace(/\\./g, '');
+        }
+        
+        let val = parseFloat(s);
+        if (isNaN(val)) return 0;
+        return isNeg ? -val : val;
+    }
+
     function toggleGrupo(parentId) {
         const children = document.querySelectorAll('.child-of-' + parentId);
         if (children.length === 0) return;
@@ -290,10 +329,8 @@
             const cat = String(row.CATEGORIA).trim();
             if (!ordenCategoriasUnicas.includes(cat)) return;
             
-            let rawValue = row[periodo];
-            if(typeof rawValue === 'string') rawValue = rawValue.replace(',', '.');
-            
-            const val = parseFloat(rawValue) || 0;
+            // Usar la función de parseo robusto para no perder ningún número
+            const val = cleanNumber(row[periodo]);
             if (!agrupado[cat]) agrupado[cat] = 0;
             agrupado[cat] += val;
         });
@@ -329,8 +366,8 @@
         ordenCategoriasUnicas.forEach(cat => {
             const cLower = cat.toLowerCase();
             const esPrincipal = categoriasPrincipales.some(p => cLower.includes(p));
-            // Actualizamos esTotal para incluir cualquier palabra 'utilidad'
-            const esTotal = cLower.includes('equilibrio') || cLower.includes('utilidad') || (cLower.includes('margen') && !cLower.includes('margen bruto'));
+            // Actualizamos esTotal para incluir la palabra pérdida por si ya viene así
+            const esTotal = cLower.includes('equilibrio') || cLower.includes('utilidad') || cLower.includes('perdida') || cLower.includes('pérdida') || (cLower.includes('margen') && !cLower.includes('margen bruto'));
 
             if (esPrincipal || esTotal) {
                 currentGrupo = { principal: cat, isTotal: esTotal, children: [] };
@@ -349,6 +386,7 @@
             const valPrincipal = agrupado[grupo.principal] || 0;
             const visibleChildren = grupo.children.filter(c => (agrupado[c] || 0) !== 0);
 
+            // Si es 0 absoluto y no tiene hijos, ocultar
             if (valPrincipal === 0 && visibleChildren.length === 0) return;
 
             const tr = document.createElement('tr');
@@ -372,7 +410,6 @@
             let nombreMostrarPrincipal = grupo.principal;
             if (valPrincipal < 0) {
                 let upperName = nombreMostrarPrincipal.toUpperCase();
-                // REGLA EXACTA: "Utilidad antes de impuesto" -> "PÉRDIDA DEL EJERCICIO"
                 if (upperName.includes('UTILIDAD ANTES')) {
                     nombreMostrarPrincipal = 'PÉRDIDA DEL EJERCICIO';
                 } else if (upperName.includes('UTILIDAD DESPUES') || upperName.includes('UTILIDAD DESPUÉS')) {
