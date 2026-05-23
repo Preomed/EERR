@@ -164,31 +164,32 @@
         const fields = allRows[headerIndex].map(f => typeof f === 'string' ? f.trim() : f);
         const dataRows = allRows.slice(headerIndex + 1);
         
-        // NORMALIZACIÓN INFALIBLE CONTRA DUPLICADOS:
-        // En Excel a veces se crea una fila para "Utilidad antes de impuesto" y OTRA para "Pérdida del ejercicio".
-        // Lo que hacemos aquí es FORZAR a que ambas se llamen "UTILIDAD ANTES DE IMPUESTO" en nuestra memoria.
-        // Como ambas se llamarán igual, el sistema las SUMARÁ automáticamente (0 + pérdida = pérdida),
-        // garantizando que NUNCA se duplique la fila ni el monto en la tabla final.
         const dataObjects = dataRows.map(row => {
             let obj = {};
             fields.forEach((field, index) => {
                 obj[field] = row[index];
             });
-            
-            if (obj.CATEGORIA && typeof obj.CATEGORIA === 'string') {
-                let catUpper = obj.CATEGORIA.toUpperCase().trim();
-                // Usamos includes() para atrapar cualquier variación de la palabra
-                if (catUpper.includes('PÉRDIDA DEL EJERCICIO') || catUpper.includes('PERDIDA DEL EJERCICIO')) {
-                    obj.CATEGORIA = 'UTILIDAD ANTES DE IMPUESTO';
-                } else if (catUpper.includes('PÉRDIDA DESPUÉS DE IMPUESTO') || catUpper.includes('PERDIDA DESPUES DE IMPUESTO')) {
-                    obj.CATEGORIA = 'UTILIDAD DESPUES DE IMPUESTO';
-                }
-            }
             return obj;
         });
         
         periodosDisponibles = fields.filter(f => f !== 'SUCURSAL' && f !== 'CATEGORIA' && f !== '');
-        globalData = dataObjects.filter(row => row.CATEGORIA && String(row.CATEGORIA).trim() !== '');
+        
+        // SOLUCIÓN FINAL A LA DUPLICACIÓN:
+        // En el archivo de Excel original hay una fila que dice "UTILIDAD ANTES DE IMPUESTO" (-1.432.780)
+        // Y además otra fila física que dice "PÉRDIDA DEL EJERCICIO" (-1.432.780).
+        // Filtramos y eliminamos por completo cualquier fila que contenga la palabra PERDIDA.
+        // Así el sistema sumará ÚNICA Y EXCLUSIVAMENTE los montos de "UTILIDAD ANTES DE IMPUESTO" (que ya vienen en negativo).
+        // Luego, en la fase de renderizado, al detectar que la utilidad es negativa, le cambiará el nombre visualmente a Pérdida.
+        globalData = dataObjects.filter(row => {
+            if (!row.CATEGORIA || String(row.CATEGORIA).trim() === '') return false;
+            let catUpper = String(row.CATEGORIA).toUpperCase().trim();
+            
+            // Eliminar las filas redundantes de pérdida
+            if (catUpper.includes('PÉRDIDA DEL EJERCICIO') || catUpper.includes('PERDIDA DEL EJERCICIO')) return false;
+            if (catUpper.includes('PÉRDIDA DESPUÉS') || catUpper.includes('PERDIDA DESPUES')) return false;
+            
+            return true;
+        });
 
         ordenCategoriasUnicas = [];
         globalData.forEach(row => {
@@ -410,9 +411,7 @@
                 porcentajeTexto = ((valPrincipal / valorBase) * 100).toFixed(1) + '%';
             }
 
-            // AQUÍ OCURRE LA MAGIA DEL CAMBIO DE NOMBRE VISUAL:
-            // Sin importar si se sumaron filas de pérdida o de utilidad, si el resultado neto es negativo (<0)
-            // visualmente le pondremos la etiqueta "PÉRDIDA DEL EJERCICIO".
+            // APLICACIÓN DEL NOMBRE VISUAL 'PÉRDIDA'
             let nombreMostrarPrincipal = grupo.principal;
             if (valPrincipal < 0) {
                 let upperName = nombreMostrarPrincipal.toUpperCase();
