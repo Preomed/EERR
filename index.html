@@ -184,12 +184,12 @@
             }
         });
 
-        // REGLAS ESPECIALES SE ELIMINARON COMO FUE SOLICITADO. ORDEN ORIGINAL SE RESPETA.
-
+        // Buscamos los índices clave para no cortar información vital al final del informe
         const idxEq = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('PUNTO DE EQUILIBRIO'));
         const idxUtil = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('UTILIDAD DESPUES') || c.toUpperCase().includes('UTILIDAD DESPUÉS'));
+        const idxImpuesto = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('IMPUESTO A LA RENTA'));
         
-        const maxIdx = Math.max(idxEq, idxUtil);
+        const maxIdx = Math.max(idxEq, idxUtil, idxImpuesto);
         if (maxIdx !== -1) {
             ordenCategoriasUnicas = ordenCategoriasUnicas.slice(0, maxIdx + 1);
         }
@@ -306,14 +306,15 @@
             valorBase = agrupado[nombreCategoriaBase];
         }
 
-        // SE AGREGÓ "MARGEN BRUTO" A LAS CATEGORÍAS PRINCIPALES
+        // SE AGREGARON "IMPUESTO A LA RENTA", "COSTOS FIJOS" y "COSTOS VARIABLES"
         const categoriasPrincipales = [
             'ingresos por venta', 'ingresos por ventas', 'costo de venta', 'costos de venta', 
-            'margen bruto', // <--- MARGEN BRUTO COMO CATEGORÍA PRINCIPAL
+            'margen bruto',
             'sueldos operacionales', 'materiales e insumo', 'materiales e insumos', 'servicios externos', 'gastos generales', 
             'gto generales', 'mkt y publicidad', 'comisiones de venta', 'comisiones de ventas',
-            'gastos fijos', 'gastos de rr. hh.', 'gastos de rr.hh.', 'costos financieros', 
-            'depreciación', 'depreciacion'
+            'gastos fijos', 'costos fijos', 'costo fijos', 'costos variables', 'costo variable', 'costo variables',
+            'gastos de rr. hh.', 'gastos de rr.hh.', 'costos financieros', 
+            'depreciación', 'depreciacion', 'impuesto a la renta'
         ];
 
         let grupos = [];
