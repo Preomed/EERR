@@ -184,15 +184,23 @@
             }
         });
 
-        const idxEq = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('PUNTO DE EQUILIBRIO'));
-        const idxUtil = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('UTILIDAD DESPUES') || c.toUpperCase().includes('UTILIDAD DESPUÉS'));
-        const idxImpuesto = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('IMPUESTO A LA RENTA'));
+        // SOLUCIÓN AL CORTE: Buscar la última fila vital desde abajo hacia arriba
+        let maxIdx = -1;
+        for (let i = ordenCategoriasUnicas.length - 1; i >= 0; i--) {
+            let cUpper = ordenCategoriasUnicas[i].toUpperCase();
+            if (cUpper.includes('PUNTO DE EQUILIBRIO') || 
+                cUpper.includes('UTILIDAD') || 
+                cUpper.includes('IMPUESTO')) {
+                maxIdx = i;
+                break;
+            }
+        }
         
-        const maxIdx = Math.max(idxEq, idxUtil, idxImpuesto);
         if (maxIdx !== -1) {
             ordenCategoriasUnicas = ordenCategoriasUnicas.slice(0, maxIdx + 1);
         }
         
+        // Se limpia "RESULTADO" si está asilado al final
         ordenCategoriasUnicas = ordenCategoriasUnicas.filter(c => c.toUpperCase().trim() !== 'RESULTADO');
 
         inicializarFiltros();
@@ -321,7 +329,8 @@
         ordenCategoriasUnicas.forEach(cat => {
             const cLower = cat.toLowerCase();
             const esPrincipal = categoriasPrincipales.some(p => cLower.includes(p));
-            const esTotal = cLower.includes('equilibrio') || cLower.includes('utilidad antes de impuesto') || cLower.includes('utilidad despues') || cLower.includes('utilidad después') || (cLower.includes('margen') && !cLower.includes('margen bruto'));
+            // Actualizamos esTotal para incluir cualquier palabra 'utilidad'
+            const esTotal = cLower.includes('equilibrio') || cLower.includes('utilidad') || (cLower.includes('margen') && !cLower.includes('margen bruto'));
 
             if (esPrincipal || esTotal) {
                 currentGrupo = { principal: cat, isTotal: esTotal, children: [] };
@@ -338,7 +347,6 @@
 
         grupos.forEach((grupo, index) => {
             const valPrincipal = agrupado[grupo.principal] || 0;
-            
             const visibleChildren = grupo.children.filter(c => (agrupado[c] || 0) !== 0);
 
             if (valPrincipal === 0 && visibleChildren.length === 0) return;
@@ -361,16 +369,15 @@
                 porcentajeTexto = ((valPrincipal / valorBase) * 100).toFixed(1) + '%';
             }
 
-            // REEMPLAZO DINÁMICO DE NOMBRES PARA UTILIDAD NEGATIVA
             let nombreMostrarPrincipal = grupo.principal;
             if (valPrincipal < 0) {
                 let upperName = nombreMostrarPrincipal.toUpperCase();
-                if (upperName.includes('UTILIDAD ANTES DE IMPUESTO')) {
+                // REGLA EXACTA: "Utilidad antes de impuesto" -> "PÉRDIDA DEL EJERCICIO"
+                if (upperName.includes('UTILIDAD ANTES')) {
                     nombreMostrarPrincipal = 'PÉRDIDA DEL EJERCICIO';
                 } else if (upperName.includes('UTILIDAD DESPUES') || upperName.includes('UTILIDAD DESPUÉS')) {
                     nombreMostrarPrincipal = 'PÉRDIDA DESPUÉS DE IMPUESTO';
                 } else if (upperName.includes('UTILIDAD')) {
-                    // Si hay alguna otra utilidad que no mapeamos arriba, reemplazamos genéricamente la palabra
                     nombreMostrarPrincipal = nombreMostrarPrincipal.replace(/UTILIDAD/ig, 'PÉRDIDA');
                 }
             }
@@ -399,11 +406,10 @@
                     pctChild = ((valChild / valorBase) * 100).toFixed(1) + '%';
                 }
 
-                // REEMPLAZO DINÁMICO TAMBIÉN PARA SUB-CUENTAS
                 let nombreMostrarChild = child;
                 if (valChild < 0) {
                     let upperNameChild = nombreMostrarChild.toUpperCase();
-                    if (upperNameChild.includes('UTILIDAD ANTES DE IMPUESTO')) {
+                    if (upperNameChild.includes('UTILIDAD ANTES')) {
                         nombreMostrarChild = 'PÉRDIDA DEL EJERCICIO';
                     } else if (upperNameChild.includes('UTILIDAD DESPUES') || upperNameChild.includes('UTILIDAD DESPUÉS')) {
                         nombreMostrarChild = 'PÉRDIDA DESPUÉS DE IMPUESTO';
