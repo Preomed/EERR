@@ -109,7 +109,6 @@
     let periodosDisponibles = [];
     let ordenCategoriasUnicas = []; 
     
-    // Agregamos un timestamp a la URL para evitar bloqueos de caché del navegador
     const URL_BASE_DATOS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT6A2yPziLhHV1MTLYKTDYMFCqnor0GHX_2fsMHu_Y36C7I8cyt_oPtDIdDJpXhoA/pub?gid=1171120709&single=true&output=csv&_t=" + new Date().getTime();
 
     window.onload = function() {
@@ -170,6 +169,21 @@
             fields.forEach((field, index) => {
                 obj[field] = row[index];
             });
+            
+            // NORMALIZACIÓN: Soluciona el error de la categoría duplicada.
+            // Si el Excel tiene escrito literalmente "PÉRDIDA DEL EJERCICIO", lo unificamos
+            // forzándolo a ser "UTILIDAD ANTES DE IMPUESTO" en la base de datos interna.
+            // De este modo NO se genera una categoría nueva al final, sino que ocupa su lugar original
+            // y el sistema solo se encarga de cambiarle el nombre visualmente más adelante.
+            if (obj.CATEGORIA && typeof obj.CATEGORIA === 'string') {
+                let catUpper = obj.CATEGORIA.toUpperCase().trim();
+                if (catUpper === 'PÉRDIDA DEL EJERCICIO' || catUpper === 'PERDIDA DEL EJERCICIO') {
+                    obj.CATEGORIA = 'UTILIDAD ANTES DE IMPUESTO';
+                } else if (catUpper === 'PÉRDIDA DESPUÉS DE IMPUESTO' || catUpper === 'PERDIDA DESPUES DE IMPUESTO') {
+                    obj.CATEGORIA = 'UTILIDAD DESPUES DE IMPUESTO';
+                }
+            }
+
             return obj;
         });
         
@@ -184,14 +198,11 @@
             }
         });
 
-        // Asegurarnos de no cortar filas importantes, ampliamos la búsqueda de la última fila vital
         let maxIdx = -1;
         for (let i = ordenCategoriasUnicas.length - 1; i >= 0; i--) {
             let cUpper = ordenCategoriasUnicas[i].toUpperCase();
             if (cUpper.includes('PUNTO DE EQUILIBRIO') || 
                 cUpper.includes('UTILIDAD') || 
-                cUpper.includes('PERDIDA') || 
-                cUpper.includes('PÉRDIDA') || 
                 cUpper.includes('IMPUESTO')) {
                 maxIdx = i;
                 break;
@@ -202,7 +213,6 @@
             ordenCategoriasUnicas = ordenCategoriasUnicas.slice(0, maxIdx + 1);
         }
         
-        // Se limpia "RESULTADO" si está asilado al final y no pertenece a un cálculo
         ordenCategoriasUnicas = ordenCategoriasUnicas.filter(c => c.toUpperCase().trim() !== 'RESULTADO');
 
         inicializarFiltros();
@@ -260,7 +270,6 @@
         }).format(valor);
     }
 
-    // Lógica robusta para parsear números con cualquier formato (puntos, comas, signos negativos o paréntesis contables)
     function cleanNumber(rawValue) {
         if (typeof rawValue === 'number') return rawValue;
         if (!rawValue) return 0;
@@ -268,7 +277,6 @@
         let s = String(rawValue).trim();
         let isNeg = false;
         
-        // Formato contable (1432780) o -1432780
         if (s.startsWith('(') && s.endsWith(')')) {
             isNeg = true;
             s = s.slice(1, -1).trim();
@@ -277,11 +285,9 @@
             s = s.slice(1).trim();
         }
         
-        // Quitar signos de peso, espacios y letras
         s = s.replace(/[^0-9.,]/g, '');
         if (s === '') return 0;
 
-        // Limpiar puntos de miles y reemplazar coma decimal
         if (s.includes('.') && s.includes(',')) {
             s = s.replace(/\\./g, '').replace(',', '.');
         } else if (s.includes(',')) {
@@ -329,7 +335,6 @@
             const cat = String(row.CATEGORIA).trim();
             if (!ordenCategoriasUnicas.includes(cat)) return;
             
-            // Usar la función de parseo robusto para no perder ningún número
             const val = cleanNumber(row[periodo]);
             if (!agrupado[cat]) agrupado[cat] = 0;
             agrupado[cat] += val;
@@ -366,8 +371,7 @@
         ordenCategoriasUnicas.forEach(cat => {
             const cLower = cat.toLowerCase();
             const esPrincipal = categoriasPrincipales.some(p => cLower.includes(p));
-            // Actualizamos esTotal para incluir la palabra pérdida por si ya viene así
-            const esTotal = cLower.includes('equilibrio') || cLower.includes('utilidad') || cLower.includes('perdida') || cLower.includes('pérdida') || (cLower.includes('margen') && !cLower.includes('margen bruto'));
+            const esTotal = cLower.includes('equilibrio') || cLower.includes('utilidad') || (cLower.includes('margen') && !cLower.includes('margen bruto'));
 
             if (esPrincipal || esTotal) {
                 currentGrupo = { principal: cat, isTotal: esTotal, children: [] };
@@ -386,7 +390,6 @@
             const valPrincipal = agrupado[grupo.principal] || 0;
             const visibleChildren = grupo.children.filter(c => (agrupado[c] || 0) !== 0);
 
-            // Si es 0 absoluto y no tiene hijos, ocultar
             if (valPrincipal === 0 && visibleChildren.length === 0) return;
 
             const tr = document.createElement('tr');
