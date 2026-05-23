@@ -188,7 +188,6 @@
         const idxComisiones = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('COMISIONES DE VENTA'));
         if (idxComisiones !== -1) {
             const [catComisiones] = ordenCategoriasUnicas.splice(idxComisiones, 1);
-            // Volver a buscar el índice de Servicios Externos porque pudo haber cambiado tras el splice
             const idxServicios = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('SERVICIOS EXTERNOS'));
             if (idxServicios !== -1) {
                 ordenCategoriasUnicas.splice(idxServicios + 1, 0, catComisiones);
@@ -317,79 +316,97 @@
             valorBase = agrupado[nombreCategoriaBase];
         }
 
-        let currentParentId = null;
+        const categoriasPrincipales = [
+            'ingresos por venta', 'ingresos por ventas', 'costo de venta', 'costos de venta', 
+            'sueldos operacionales', 'materiales e insumo', 'materiales e insumos', 'servicios externos', 'gastos generales', 
+            'gto generales', 'mkt y publicidad', 
+            'gastos fijos', 'gastos de rr. hh.', 'gastos de rr.hh.', 'costos financieros', 
+            'depreciación', 'depreciacion'
+        ];
 
-        ordenCategoriasUnicas.forEach((cat, index) => {
-            const val = agrupado[cat] || 0;
-            if (val === 0) return;
+        let grupos = [];
+        let currentGrupo = null;
 
-            const tr = document.createElement('tr');
+        // Fase 1: Estructurar padres e hijos (Independiente de si valen 0 o no)
+        ordenCategoriasUnicas.forEach(cat => {
             const cLower = cat.toLowerCase();
-            
-            const categoriasPrincipales = [
-                'ingresos por venta', 'costo de venta', 'costos de venta', 
-                'sueldos operacionales', 'materiales e insumo', 'servicios externos', 'gastos generales', 
-                'gto generales', 'mkt y publicidad', 
-                'gastos fijos', 'gastos de rr. hh.', 'costos financieros', 
-                'depreciación', 'depreciacion'
-            ];
-            
             const esPrincipal = categoriasPrincipales.some(p => cLower.includes(p));
+            const esTotal = cLower.includes('equilibrio') || cLower.includes('utilidad antes de impuesto') || cLower.includes('utilidad despues') || cLower.includes('utilidad después');
 
-            if (cLower.includes('equilibrio') || cLower.includes('utilidad antes de impuesto') || cLower.includes('utilidad despues') || cLower.includes('utilidad después')) {
+            if (esPrincipal || esTotal) {
+                currentGrupo = { principal: cat, isTotal: esTotal, children: [] };
+                grupos.push(currentGrupo);
+            } else {
+                if (currentGrupo) {
+                    currentGrupo.children.push(cat);
+                } else {
+                    currentGrupo = { principal: cat, isTotal: false, children: [] };
+                    grupos.push(currentGrupo);
+                }
+            }
+        });
+
+        // Fase 2: Renderizar grupos verificando si tienen hijos visibles o no
+        grupos.forEach((grupo, index) => {
+            const valPrincipal = agrupado[grupo.principal] || 0;
+            
+            // Filtramos los hijos que NO son cero
+            const visibleChildren = grupo.children.filter(c => (agrupado[c] || 0) !== 0);
+
+            // Si el padre es 0 y tampoco tiene hijos con valor, ocultamos todo el bloque
+            if (valPrincipal === 0 && visibleChildren.length === 0) return;
+
+            // 1. Renderizar Padre
+            const tr = document.createElement('tr');
+            if (grupo.isTotal) {
                 tr.className = 'row-grand-total';
-                currentParentId = null; 
-            } else if (cLower.includes('margen') || cLower.includes('total') || esPrincipal) {
+            } else {
                 tr.className = 'row-total';
-                
-                if (esPrincipal) {
-                    currentParentId = 'grupo-' + index;
-                    tr.id = currentParentId;
+                if (visibleChildren.length > 0) {
+                    tr.id = 'grupo-' + index;
                     tr.style.cursor = 'pointer';
                     tr.onclick = function() { toggleGrupo(this.id); };
-                } else {
-                    currentParentId = null; 
-                }
-            } else {
-                tr.className = 'row-subitem';
-                if (currentParentId) {
-                    tr.classList.add('child-of-' + currentParentId);
-                    tr.style.display = 'none'; 
                 }
             }
 
-            const colorClass = val < 0 ? 'val-negative' : '';
-            
+            const colorClass = valPrincipal < 0 ? 'val-negative' : '';
             let porcentajeTexto = '-';
             if (valorBase !== 0) {
-                const porcentaje = (val / valorBase) * 100;
-                porcentajeTexto = porcentaje.toFixed(1) + '%';
+                porcentajeTexto = ((valPrincipal / valorBase) * 100).toFixed(1) + '%';
             }
 
-            let catHtml = cat;
-            if (esPrincipal) {
-                catHtml = `<span class="toggle-icon">▶</span> ${cat}`;
+            let catHtml = grupo.principal;
+            if (!grupo.isTotal && visibleChildren.length > 0) {
+                catHtml = `<span class="toggle-icon">▶</span> ${grupo.principal}`;
             }
 
             tr.innerHTML = `
                 <td>${catHtml}</td>
-                <td class="text-right ${colorClass}">${formatearMoneda(val)}</td>
+                <td class="text-right ${colorClass}">${formatearMoneda(valPrincipal)}</td>
                 <td class="text-right val-percent">${porcentajeTexto}</td>
             `;
             tbody.appendChild(tr);
-        });
 
-        // Limpiar iconos si no hay sub-ítems visibles
-        document.querySelectorAll('.row-total').forEach(row => {
-            if (row.id && row.id.startsWith('grupo-')) {
-                const children = document.querySelectorAll('.child-of-' + row.id);
-                if (children.length === 0) {
-                    const icon = row.querySelector('.toggle-icon');
-                    if (icon) icon.style.display = 'none';
-                    row.style.cursor = 'default';
-                    row.onclick = null;
+            // 2. Renderizar Hijos Visibles
+            visibleChildren.forEach(child => {
+                const valChild = agrupado[child] || 0;
+                const trChild = document.createElement('tr');
+                trChild.className = 'row-subitem child-of-grupo-' + index;
+                trChild.style.display = 'none'; // Acordeón cerrado por defecto
+
+                const colorChild = valChild < 0 ? 'val-negative' : '';
+                let pctChild = '-';
+                if (valorBase !== 0) {
+                    pctChild = ((valChild / valorBase) * 100).toFixed(1) + '%';
                 }
-            }
+
+                trChild.innerHTML = `
+                    <td>${child}</td>
+                    <td class="text-right ${colorChild}">${formatearMoneda(valChild)}</td>
+                    <td class="text-right val-percent">${pctChild}</td>
+                `;
+                tbody.appendChild(trChild);
+            });
         });
     }
 </script>
