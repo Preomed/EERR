@@ -169,26 +169,28 @@
             fields.forEach((field, index) => {
                 obj[field] = row[index];
             });
-            
-            // NORMALIZACIÓN: Soluciona el error de la categoría duplicada.
-            // Si el Excel tiene escrito literalmente "PÉRDIDA DEL EJERCICIO", lo unificamos
-            // forzándolo a ser "UTILIDAD ANTES DE IMPUESTO" en la base de datos interna.
-            // De este modo NO se genera una categoría nueva al final, sino que ocupa su lugar original
-            // y el sistema solo se encarga de cambiarle el nombre visualmente más adelante.
-            if (obj.CATEGORIA && typeof obj.CATEGORIA === 'string') {
-                let catUpper = obj.CATEGORIA.toUpperCase().trim();
-                if (catUpper === 'PÉRDIDA DEL EJERCICIO' || catUpper === 'PERDIDA DEL EJERCICIO') {
-                    obj.CATEGORIA = 'UTILIDAD ANTES DE IMPUESTO';
-                } else if (catUpper === 'PÉRDIDA DESPUÉS DE IMPUESTO' || catUpper === 'PERDIDA DESPUES DE IMPUESTO') {
-                    obj.CATEGORIA = 'UTILIDAD DESPUES DE IMPUESTO';
-                }
-            }
-
             return obj;
         });
         
         periodosDisponibles = fields.filter(f => f !== 'SUCURSAL' && f !== 'CATEGORIA' && f !== '');
-        globalData = dataObjects.filter(row => row.CATEGORIA && String(row.CATEGORIA).trim() !== '');
+        
+        // CORRECCIÓN DE DUPLICACIÓN:
+        // El archivo Excel tiene tanto la fila "Utilidad..." como la fila explícita "Pérdida...".
+        // Para evitar que el sistema sume el monto dos veces (duplicándolo), filtramos y eliminamos por completo 
+        // las filas que dicen textualmente "Pérdida..." en el CSV original.
+        // Solo nos quedaremos con "UTILIDAD", la cual contiene el valor matemático real (positivo o negativo),
+        // y más abajo el sistema le cambiará visualmente el nombre a "PÉRDIDA" si es necesario.
+        globalData = dataObjects.filter(row => {
+            if (!row.CATEGORIA) return false;
+            let catStr = String(row.CATEGORIA).trim();
+            if (catStr === '') return false;
+            
+            let catUpper = catStr.toUpperCase();
+            if (catUpper.includes('PÉRDIDA DEL EJERCICIO') || catUpper.includes('PERDIDA DEL EJERCICIO')) return false;
+            if (catUpper.includes('PÉRDIDA DESPUÉS DE IMPUESTO') || catUpper.includes('PERDIDA DESPUES DE IMPUESTO')) return false;
+            
+            return true;
+        });
 
         ordenCategoriasUnicas = [];
         globalData.forEach(row => {
