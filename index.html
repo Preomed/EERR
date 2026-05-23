@@ -184,7 +184,6 @@
             }
         });
 
-        // Buscamos los índices clave para no cortar información vital al final del informe
         const idxEq = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('PUNTO DE EQUILIBRIO'));
         const idxUtil = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('UTILIDAD DESPUES') || c.toUpperCase().includes('UTILIDAD DESPUÉS'));
         const idxImpuesto = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('IMPUESTO A LA RENTA'));
@@ -306,7 +305,6 @@
             valorBase = agrupado[nombreCategoriaBase];
         }
 
-        // SE AGREGARON "IMPUESTO A LA RENTA", "COSTOS FIJOS" y "COSTOS VARIABLES"
         const categoriasPrincipales = [
             'ingresos por venta', 'ingresos por ventas', 'costo de venta', 'costos de venta', 
             'margen bruto',
@@ -320,11 +318,9 @@
         let grupos = [];
         let currentGrupo = null;
 
-        // Fase 1: Estructurar padres e hijos
         ordenCategoriasUnicas.forEach(cat => {
             const cLower = cat.toLowerCase();
             const esPrincipal = categoriasPrincipales.some(p => cLower.includes(p));
-            // Los márgenes o totales de utilidad se siguen tratando como totales mayores
             const esTotal = cLower.includes('equilibrio') || cLower.includes('utilidad antes de impuesto') || cLower.includes('utilidad despues') || cLower.includes('utilidad después') || (cLower.includes('margen') && !cLower.includes('margen bruto'));
 
             if (esPrincipal || esTotal) {
@@ -340,17 +336,13 @@
             }
         });
 
-        // Fase 2: Renderizar grupos verificando si tienen hijos visibles o no
         grupos.forEach((grupo, index) => {
             const valPrincipal = agrupado[grupo.principal] || 0;
             
-            // Filtramos los hijos que NO son cero
             const visibleChildren = grupo.children.filter(c => (agrupado[c] || 0) !== 0);
 
-            // Si el padre es 0 y tampoco tiene hijos con valor, ocultamos todo el bloque
             if (valPrincipal === 0 && visibleChildren.length === 0) return;
 
-            // 1. Renderizar Padre
             const tr = document.createElement('tr');
             if (grupo.isTotal) {
                 tr.className = 'row-grand-total';
@@ -369,9 +361,23 @@
                 porcentajeTexto = ((valPrincipal / valorBase) * 100).toFixed(1) + '%';
             }
 
-            let catHtml = grupo.principal;
+            // REEMPLAZO DINÁMICO DE NOMBRES PARA UTILIDAD NEGATIVA
+            let nombreMostrarPrincipal = grupo.principal;
+            if (valPrincipal < 0) {
+                let upperName = nombreMostrarPrincipal.toUpperCase();
+                if (upperName.includes('UTILIDAD ANTES DE IMPUESTO')) {
+                    nombreMostrarPrincipal = 'PÉRDIDA DEL EJERCICIO';
+                } else if (upperName.includes('UTILIDAD DESPUES') || upperName.includes('UTILIDAD DESPUÉS')) {
+                    nombreMostrarPrincipal = 'PÉRDIDA DESPUÉS DE IMPUESTO';
+                } else if (upperName.includes('UTILIDAD')) {
+                    // Si hay alguna otra utilidad que no mapeamos arriba, reemplazamos genéricamente la palabra
+                    nombreMostrarPrincipal = nombreMostrarPrincipal.replace(/UTILIDAD/ig, 'PÉRDIDA');
+                }
+            }
+
+            let catHtml = nombreMostrarPrincipal;
             if (!grupo.isTotal && visibleChildren.length > 0) {
-                catHtml = `<span class="toggle-icon">▶</span> ${grupo.principal}`;
+                catHtml = `<span class="toggle-icon">▶</span> ${nombreMostrarPrincipal}`;
             }
 
             tr.innerHTML = `
@@ -381,12 +387,11 @@
             `;
             tbody.appendChild(tr);
 
-            // 2. Renderizar Hijos Visibles
             visibleChildren.forEach(child => {
                 const valChild = agrupado[child] || 0;
                 const trChild = document.createElement('tr');
                 trChild.className = 'row-subitem child-of-grupo-' + index;
-                trChild.style.display = 'none'; // Acordeón cerrado por defecto
+                trChild.style.display = 'none';
 
                 const colorChild = valChild < 0 ? 'val-negative' : '';
                 let pctChild = '-';
@@ -394,8 +399,21 @@
                     pctChild = ((valChild / valorBase) * 100).toFixed(1) + '%';
                 }
 
+                // REEMPLAZO DINÁMICO TAMBIÉN PARA SUB-CUENTAS
+                let nombreMostrarChild = child;
+                if (valChild < 0) {
+                    let upperNameChild = nombreMostrarChild.toUpperCase();
+                    if (upperNameChild.includes('UTILIDAD ANTES DE IMPUESTO')) {
+                        nombreMostrarChild = 'PÉRDIDA DEL EJERCICIO';
+                    } else if (upperNameChild.includes('UTILIDAD DESPUES') || upperNameChild.includes('UTILIDAD DESPUÉS')) {
+                        nombreMostrarChild = 'PÉRDIDA DESPUÉS DE IMPUESTO';
+                    } else if (upperNameChild.includes('UTILIDAD')) {
+                        nombreMostrarChild = nombreMostrarChild.replace(/UTILIDAD/ig, 'PÉRDIDA');
+                    }
+                }
+
                 trChild.innerHTML = `
-                    <td>${child}</td>
+                    <td>${nombreMostrarChild}</td>
                     <td class="text-right ${colorChild}">${formatearMoneda(valChild)}</td>
                     <td class="text-right val-percent">${pctChild}</td>
                 `;
@@ -407,3 +425,4 @@
 
 </body>
 </html>
+print(f"[file-tag: estado_resultados_utilidad_perdida.html]")
