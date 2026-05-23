@@ -184,17 +184,8 @@
             }
         });
 
-        // REGLA ESPECIAL: Mover COMISIONES DE VENTA para que quede debajo de SERVICIOS EXTERNOS
-        const idxComisiones = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('COMISIONES DE VENTA'));
-        if (idxComisiones !== -1) {
-            const [catComisiones] = ordenCategoriasUnicas.splice(idxComisiones, 1);
-            const idxServicios = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('SERVICIOS EXTERNOS'));
-            if (idxServicios !== -1) {
-                ordenCategoriasUnicas.splice(idxServicios + 1, 0, catComisiones);
-            } else {
-                ordenCategoriasUnicas.push(catComisiones);
-            }
-        }
+        // SE ELIMINÓ LA REGLA QUE MOVÍA "COMISIONES DE VENTA".
+        // AHORA QUEDARÁ EN SU LUGAR ORIGINAL DEL EXCEL.
 
         const idxEq = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('PUNTO DE EQUILIBRIO'));
         const idxUtil = ordenCategoriasUnicas.findIndex(c => c.toUpperCase().includes('UTILIDAD DESPUES') || c.toUpperCase().includes('UTILIDAD DESPUÉS'));
@@ -316,10 +307,11 @@
             valorBase = agrupado[nombreCategoriaBase];
         }
 
+        // SE AGREGÓ "COMISIONES DE VENTA" A LAS CATEGORÍAS PRINCIPALES
         const categoriasPrincipales = [
             'ingresos por venta', 'ingresos por ventas', 'costo de venta', 'costos de venta', 
             'sueldos operacionales', 'materiales e insumo', 'materiales e insumos', 'servicios externos', 'gastos generales', 
-            'gto generales', 'mkt y publicidad', 
+            'gto generales', 'mkt y publicidad', 'comisiones de venta', 'comisiones de ventas',
             'gastos fijos', 'gastos de rr. hh.', 'gastos de rr.hh.', 'costos financieros', 
             'depreciación', 'depreciacion'
         ];
@@ -327,7 +319,7 @@
         let grupos = [];
         let currentGrupo = null;
 
-        // Fase 1: Estructurar padres e hijos (Independiente de si valen 0 o no)
+        // Fase 1: Estructurar padres e hijos
         ordenCategoriasUnicas.forEach(cat => {
             const cLower = cat.toLowerCase();
             const esPrincipal = categoriasPrincipales.some(p => cLower.includes(p));
