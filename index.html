@@ -144,6 +144,40 @@
         });
     });
 
+    // Función segura para leer números de cualquier formato
+    function cleanNumber(rawValue) {
+        if (typeof rawValue === 'number') return rawValue;
+        if (!rawValue) return 0;
+        
+        let s = String(rawValue).trim();
+        let isNeg = false;
+        
+        if (s.startsWith('(') && s.endsWith(')')) {
+            isNeg = true;
+            s = s.slice(1, -1).trim();
+        } else if (s.startsWith('-')) {
+            isNeg = true;
+            s = s.slice(1).trim();
+        }
+        
+        s = s.replace(/[^0-9.,]/g, '');
+        if (s === '') return 0;
+
+        if (s.includes('.') && s.includes(',')) {
+            s = s.replace(/\\./g, '').replace(',', '.');
+        } else if (s.includes(',')) {
+            s = s.replace(',', '.');
+        } else if (s.split('.').length > 2) {
+            s = s.replace(/\\./g, '');
+        } else if (s.includes('.') && s.split('.')[1].length === 3) {
+            s = s.replace(/\\./g, '');
+        }
+        
+        let val = parseFloat(s);
+        if (isNaN(val)) return 0;
+        return isNeg ? -val : val;
+    }
+
     function procesarDatos(allRows) {
         let headerIndex = -1;
         
@@ -164,32 +198,55 @@
         const fields = allRows[headerIndex].map(f => typeof f === 'string' ? f.trim() : f);
         const dataRows = allRows.slice(headerIndex + 1);
         
-        const dataObjects = dataRows.map(row => {
-            let obj = {};
-            fields.forEach((field, index) => {
-                obj[field] = row[index];
-            });
-            return obj;
-        });
-        
         periodosDisponibles = fields.filter(f => f !== 'SUCURSAL' && f !== 'CATEGORIA' && f !== '');
         
-        // SOLUCIÓN FINAL A LA DUPLICACIÓN:
-        // En el archivo de Excel original hay una fila que dice "UTILIDAD ANTES DE IMPUESTO" (-1.432.780)
-        // Y además otra fila física que dice "PÉRDIDA DEL EJERCICIO" (-1.432.780).
-        // Filtramos y eliminamos por completo cualquier fila que contenga la palabra PERDIDA.
-        // Así el sistema sumará ÚNICA Y EXCLUSIVAMENTE los montos de "UTILIDAD ANTES DE IMPUESTO" (que ya vienen en negativo).
-        // Luego, en la fase de renderizado, al detectar que la utilidad es negativa, le cambiará el nombre visualmente a Pérdida.
-        globalData = dataObjects.filter(row => {
-            if (!row.CATEGORIA || String(row.CATEGORIA).trim() === '') return false;
-            let catUpper = String(row.CATEGORIA).toUpperCase().trim();
+        let processedRows = [];
+        dataRows.forEach(rowArray => {
+            let obj = {};
+            fields.forEach((field, index) => {
+                obj[field] = rowArray[index];
+            });
             
-            // Eliminar las filas redundantes de pérdida
-            if (catUpper.includes('PÉRDIDA DEL EJERCICIO') || catUpper.includes('PERDIDA DEL EJERCICIO')) return false;
-            if (catUpper.includes('PÉRDIDA DESPUÉS') || catUpper.includes('PERDIDA DESPUES')) return false;
+            if (!obj.CATEGORIA || String(obj.CATEGORIA).trim() === '') return;
             
-            return true;
+            let catStr = String(obj.CATEGORIA).trim();
+            let catUpper = catStr.toUpperCase();
+            
+            // FASE 1: UNIFICACIÓN DE NOMBRES
+            // Transformamos cualquier variación de "Pérdida" en "Utilidad". 
+            // Así, Puerto Montt (que solo tiene Pérdida) pasará a tener Utilidad, 
+            // y Viña del Mar (que podría tener ambas) tendrá dos filas llamadas Utilidad.
+            if (catUpper.includes('PÉRDIDA DEL EJERCICIO') || catUpper.includes('PERDIDA DEL EJERCICIO') || catUpper.includes('UTILIDAD ANTES')) {
+                obj.CATEGORIA = 'UTILIDAD ANTES DE IMPUESTO';
+            } else if (catUpper.includes('PÉRDIDA DESPUÉS') || catUpper.includes('PERDIDA DESPUES') || catUpper.includes('UTILIDAD DESPUES') || catUpper.includes('UTILIDAD DESPUÉS')) {
+                obj.CATEGORIA = 'UTILIDAD DESPUES DE IMPUESTO';
+            }
+            
+            processedRows.push(obj);
         });
+
+        // FASE 2: ELIMINAR DUPLICADOS EXACTOS
+        // Si una sucursal tiene 2 filas llamadas "UTILIDAD ANTES DE IMPUESTO" (porque venía una pérdida y una utilidad de Excel),
+        // las fusionamos tomando siempre el valor que no sea cero. Así JAMÁS se sumarán doble.
+        let rowMap = {};
+        processedRows.forEach(row => {
+            let key = row.SUCURSAL + '|' + row.CATEGORIA;
+            if (!rowMap[key]) {
+                rowMap[key] = { ...row };
+            } else {
+                // Si la fila ya existe, combinamos los datos para no duplicarlos matemáticamente
+                periodosDisponibles.forEach(p => {
+                    let currentVal = cleanNumber(rowMap[key][p]);
+                    let newVal = cleanNumber(row[p]);
+                    // Si el que teníamos guardado era 0, y el nuevo tiene valor, lo actualizamos.
+                    if (currentVal === 0 && newVal !== 0) {
+                        rowMap[key][p] = row[p];
+                    }
+                });
+            }
+        });
+
+        globalData = Object.values(rowMap);
 
         ordenCategoriasUnicas = [];
         globalData.forEach(row => {
@@ -269,39 +326,6 @@
             currency: 'CLP',
             minimumFractionDigits: 0
         }).format(valor);
-    }
-
-    function cleanNumber(rawValue) {
-        if (typeof rawValue === 'number') return rawValue;
-        if (!rawValue) return 0;
-        
-        let s = String(rawValue).trim();
-        let isNeg = false;
-        
-        if (s.startsWith('(') && s.endsWith(')')) {
-            isNeg = true;
-            s = s.slice(1, -1).trim();
-        } else if (s.startsWith('-')) {
-            isNeg = true;
-            s = s.slice(1).trim();
-        }
-        
-        s = s.replace(/[^0-9.,]/g, '');
-        if (s === '') return 0;
-
-        if (s.includes('.') && s.includes(',')) {
-            s = s.replace(/\\./g, '').replace(',', '.');
-        } else if (s.includes(',')) {
-            s = s.replace(',', '.');
-        } else if (s.split('.').length > 2) {
-            s = s.replace(/\\./g, '');
-        } else if (s.includes('.') && s.split('.')[1].length === 3) {
-            s = s.replace(/\\./g, '');
-        }
-        
-        let val = parseFloat(s);
-        if (isNaN(val)) return 0;
-        return isNeg ? -val : val;
     }
 
     function toggleGrupo(parentId) {
@@ -411,7 +435,8 @@
                 porcentajeTexto = ((valPrincipal / valorBase) * 100).toFixed(1) + '%';
             }
 
-            // APLICACIÓN DEL NOMBRE VISUAL 'PÉRDIDA'
+            // FASE 3: REEMPLAZO VISUAL DINÁMICO
+            // Si el monto es negativo, mostramos Pérdida. Si es positivo, mostramos Utilidad.
             let nombreMostrarPrincipal = grupo.principal;
             if (valPrincipal < 0) {
                 let upperName = nombreMostrarPrincipal.toUpperCase();
